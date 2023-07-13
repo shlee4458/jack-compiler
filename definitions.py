@@ -19,7 +19,6 @@ TYPES = [
 
 SYMBOLS = "{}()[].,;+-*/&|<>=~"
 
-
 KEYWORDS = TYPES + [
     'class',
     'constructor',
@@ -39,3 +38,16 @@ KEYWORDS = TYPES + [
     'var',
     'while',
 ]
+
+NUMTABS = {
+    "classVarDec": 1,
+    "subroutineDec": 1,
+    "parameterList": 2,
+    "subroutineBody": 2,
+    "statements": 3,
+    "letStatement": 4,
+    "ifStatement": 4,
+    "whileStatement": 4,
+    "doStatement": 4,
+    "returnStatement": 4
+}
