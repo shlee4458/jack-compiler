@@ -18,6 +18,11 @@ Program Structure:
                             pre expression; let a =
                             expression:
                                 term: b
+                        doStatement - do Keyboard.methodname(x, y)
+                            pre expression: 
+                            expressionList: after the '('
+                                expression:
+                                    term:
                         ifStatement - if (a = b) { statements }
                             pre expression if (
                             expression: 
@@ -31,15 +36,13 @@ Program Structure:
                             post expression: ), {
                             statements
                                 .... recursively call writeStatements
-                        doStatement - do Keyboard.methodname(x, y)
-                            pre expression: 
-                            expressionList: after the '('
-                                expression:
-                                    term:
                         returnStatement - return ;
+
+            expressionList: list of expressions
+            expression: comination of terms and symbol
 '''
 
-DEBUG_MODE = True
+DEBUG_MODE = False
 
 class CompilerEngine:
     
@@ -48,6 +51,7 @@ class CompilerEngine:
         self.outputFile = self.getOutputFile(tokenFile)
         self.line = self.tokenFile.readline()
         self.triple = [] # represents [opening tag, token, closing tag]
+        self.open = 0
         self.tabs = 0
 
     def getOutputFile(self, tokenFile):
@@ -57,9 +61,9 @@ class CompilerEngine:
     def writeClass(self):
         self.writeCurrentTag("class", True) # write opening tag
 
-        # write tokens before the classVarDec starts
+        # write until classVarDec starts
         self.tabs += 1
-        self.writeUntilFound(["static", "field"], False) # TODO: check assumption that there will always be static/field
+        self.writeUntilFound("{", True)
         self.tabs -= 1
 
         # write classVarDec and subroutineDec
@@ -70,7 +74,7 @@ class CompilerEngine:
         self.writeCurrentTag("class", False) # write closing tag
 
     def writeClassVarDec(self):
-        while self.triple[1] in ["static", "field"]:
+        while not self.isEnd() and self.triple[1] in ["static", "field"]:
             self.tabs += 1
             self.writeCurrentTag("classVarDec", True) # write opening tag
             self.tabs += 1
@@ -81,32 +85,6 @@ class CompilerEngine:
             self.tabs -= 1
             self.writeCurrentTag("classVarDec", False) # write closing tag
             self.tabs -= 1
-
-    def writeUntilFound(self, tokens, end):
-        '''
-        Write the triple of the [opening tag, token, closing tag] in a line
-        until the token is found.
-            i.e writeClassVarDec will be written until 'j' is found 
-        If it is the end of the current block, write the last triple in with the tab
-        and update the triple.
-        '''
-        while self.triple[1] not in tokens or not self.triple:
-            self.writeWithTab()
-            self.advance()
-        
-        if end:
-            self.writeWithTab()
-            self.advance()
-
-    def writeWithTab(self):
-        '''
-        Write to the output file the text with \t by self.tabs times prefixed.
-        '''
-        print(self.triple)
-        text = ("  " * self.tabs) + (" ".join(self.triple)) + '\n'
-        if DEBUG_MODE:
-            print(f"Wrote the text {text}")
-        self.outputFile.write(text)
 
     def writeSubRoutineDec(self):
         self.tabs += 1
@@ -120,7 +98,7 @@ class CompilerEngine:
         self.writeParamList()
 
         # write a single symbol
-        self.writeUntilFound(")", True)
+        self.writeSingle()
     
         # write subroutineBody
         self.writeSubRoutineBody()
@@ -146,63 +124,98 @@ class CompilerEngine:
         # include the opening tag before writing statements
         self.writeUntilFound("{", True)
 
+        # write varDec if found
+        self.writeVarDec()
+
         # write statements
-        # self.writeStatements()
+        self.writeStatements()
 
         self.tabs -= 1
         self.writeCurrentTag("subroutineBody", False) # write closing tag
 
+    def writeVarDec(self):
+        while self.triple[1] in ["var"]:
+            self.writeCurrentTag("varDec", True) # write opening tag
+            self.tabs += 1
+
+            # write until ";" is found
+            self.writeUntilFound(";", True)
+
+            self.tabs -= 1
+            self.writeCurrentTag("varDec", False) # write closing tag
+
     def writeStatements(self):
-        stack = [] # use stack to keep track of the current token, including closing and opening tag
         self.writeCurrentTag("statements", True) # write opening tag
         self.tabs += 1
+        self.open += 1
         # write opening symbol 
-        while self.line != "}":
+        while self.open: # while there is open statements
 
             # write let / if / while / do / return statements
             # if it is "letStatement"
-
+            if self.triple[1] == "let":
+                self.writeLetStatement()
 
             # if it is "ifStatement"
+            elif self.triple[1] == "if":
+                self.writeIfStatement()
 
             # if it is "whileStatement"
+            elif self.triple[1] == "while":
+                self.writeWhileStatement()
 
             # if it is "doStatement"
+            elif self.triple[1] == "do":
+                self.writeDoStatement()
 
             # if it is "returnStatement"
+            elif self.triple[1] == "return":
+                self.writeReturnStatement()
 
-            pass        
+            # update the open if the current statement is closed
+            if self.triple[1] == "}":
+                self.writeSingle()
+                self.open -= 1
+                break
+
         # write closing symbol
         self.tabs -= 1
         self.writeCurrentTag("statements", False) # write opening tag
 
     def writeLetStatement(self):
-        self.tabs += 1
         self.writeCurrentTag("letStatement", True) # write opening tag
+        self.tabs += 1        
 
-        # write pre expression
-        while True:
-            break
+        # write LHS
+        self.writeUntilFound(["[", "="], False)
+        if self.triple[1] == "[":
+            self.writeSingle()
+            self.writeExpression()
+        
+        # finsish the LHS
+        self.writeUntilFound('=', True)
 
-        # write expression
+        # write RHS
         self.writeExpression()
 
-        self.writeCurrentTag("letStatement", False) # write opening tag
+        # write until ";" is found
+        self.writeUntilFound(';', True)
+
         self.tabs -= 1
+        self.writeCurrentTag("letStatement", False) # write opening tag
+        
     def writeIfStatement(self):
         self.writeCurrentTag("ifStatement", True) # write opening tag
         self.tabs += 1
 
-        # pre expression
-        while True:
-            break 
+        # write until the (, where the expression for checking condition starts
+        self.writeUntilFound("(", True) 
 
         # expression
         self.writeExpression()
 
-        # post expressions
-        while True:
-            break
+        # write until the statements start
+        self.writeUntilFound("{", True)
 
         # more statements
         self.writeStatements()
@@ -212,20 +225,17 @@ class CompilerEngine:
 
 
     def writeWhileStatement(self):
-        # TODO: refactor if and while
         self.writeCurrentTag("whileStatement", True) # write opening tag
         self.tabs += 1
 
-        # pre expression
-        while True:
-            break 
+        # write until the condition checking starts
+        self.writeUntilFound("(", True)
 
         # expression
         self.writeExpression()
 
-        # post expressions
-        while True:
-            break
+        # write until the statements start
+        self.writeUntilFound("{", True)
 
         # more statements
         self.writeStatements()
@@ -238,6 +248,7 @@ class CompilerEngine:
         self.tabs += 1
 
         # pre expression
+        self.writeExpression()
 
         # expression
 
@@ -247,7 +258,8 @@ class CompilerEngine:
     def writeReturnStatement(self):
         self.writeCurrentTag("returnStatement", True) # write opening tag
 
-        # parse until ";" is found
+        # write until ; is found, inclusive
+        self.writeUntilFound(";", True)
 
         self.writeCurrentTag("returnStatement", False) # write opening tag
 
@@ -255,13 +267,36 @@ class CompilerEngine:
         self.writeCurrentTag("expression", True) # write opening tag
         self.tabs += 1
 
-        # write term and symbols...
-        while True:
-            break
+        # while it is not the end of the expression
+            # ']' -- indexing -> let a[i]
+            # ')' -- condition checking -> while (a > b)
+            # ';' -- end of let -> let a = 1 + 2;
+            # ',' -- separate expresssionList -> Screen.print(a, b)
+        while self.triple[1] not in ["]", ")", ";", ","]:
+            # write term
+            if self.triple[1] not in definitions.OPERATIONS:
+                self.writeTerm()
+
+            # write operation symbols; 
+            if self.triple[1] in definitions.OPERATIONS:
+                self.writeSingle()
+
+            # if expressionList is nested in the current expression
+            if self.triple[1] == "(":
+                self.writeExpressionList()
 
         self.tabs -= 1
         self.writeCurrentTag("expression", False) # write closing tag
-        
+
+    def writeTerm(self):
+        self.writeCurrentTag("term", True) # write opening tag
+        self.tabs += 1
+
+        self.writeSingle()
+
+        self.tabs -= 1
+        self.writeCurrentTag("term", False) # write closing tag
+
     def writeExpressionList(self):
         self.writeCurrentTag("expressionList", True) # write opening tag
         self.tabs += 1
@@ -276,7 +311,7 @@ class CompilerEngine:
 
     def writeCurrentTag(self, tagName, open):
         '''
-        Write the tagName to the output
+        Write the tagName to the output.
         '''
         tag = self.getTag(tagName, open)
         if DEBUG_MODE:
@@ -298,10 +333,44 @@ class CompilerEngine:
         self.outputFile.close()
 
     def advance(self):
-
         self.triple = self.tokenFile.readline().strip('\n').split()
+        print(self.triple)
+
+        # if current line is not a single word
+        if len(self.triple) > 1:
+            self.triple = [self.triple[0]] + [" ".join(self.triple[1:-1])] + [self.triple[-1]]
+
         return self.triple
-    
+
+    def writeSingle(self):
+        self.writeWithTab()
+        self.advance()
+
+    def writeUntilFound(self, tokens, end):
+        '''
+        Write the triple of the [opening tag, token, closing tag] in a line
+        until the token is found.
+            i.e writeClassVarDec will be written until 'j' is found 
+        If it is the end of the current block, write the last triple in with the tab
+        and update the triple.
+        '''
+
+        while not self.isEnd() and self.triple[1] not in tokens:
+            self.writeSingle()
+        
+        if not self.isEnd() and end:
+            self.writeSingle()
+
+    def writeWithTab(self):
+        '''
+        Write to the output file the text with \t by self.tabs times prefixed.
+        '''
+        print(self.triple)
+        text = ("  " * self.tabs) + (" ".join(self.triple)) + '\n'
+        if DEBUG_MODE:
+            print(f"Wrote the text {text}")
+        self.outputFile.write(text)
+
     def isEnd(self):
         '''
         If the self.triple has only one element after advancing, it is the end
