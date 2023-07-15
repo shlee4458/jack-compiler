@@ -19,8 +19,7 @@ def tokenize(content):
     lines = [line.strip() for line in re.sub('/\*.*?\*/', "", content, flags=re.DOTALL).split('\n')\
              if line and not line.startswith('//')] 
 
-    # add the opening tag
-    xml = ['<tokens>']
+    xml = []
 
     # parse line -> word -> char 
     for line in lines:
@@ -55,7 +54,6 @@ def tokenize(content):
                 addToken(xml, chars, classifier)
 
     # Add closing tag and return
-    xml.append('<tokens>')
     return "\n".join(xml)
 
 def classify(chars):
@@ -77,9 +75,8 @@ def addToken(xml, c, tokenType):
     '''
     Adds the opening tag, token and closing tag to the input list.
     '''
-    xml.append(f"<{tokenType}>")
-    xml.append(f"{c}")
-    xml.append(f"</{tokenType}>")
+    s = f"<{tokenType}> {c} <{tokenType}>"
+    xml.append(s)
 
 def parsePath(path):
     '''
@@ -101,7 +98,9 @@ def main(path):
             tokenizedXML = tokenize(inputFile.read())
             outputFile = os.path.basename(file)[:-len(".jack")] + "T.xml"
             with open(outputFile, 'w') as output:
+                output.write('<token>\n')
                 output.write(tokenizedXML)
+                output.write('</token>')
 
 if __name__ == "__main__":
     main(sys.argv[1])

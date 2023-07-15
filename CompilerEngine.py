@@ -1,7 +1,12 @@
+#!/usr/bin/env python
+import sys, os
+import re
+import definitions
+
 '''
 This program is a jack compiler engine for the jack high level programming language.
 Program Structure:
-    class: 
+    class:
         branches - 
             classVarDec(';'): startswith - (static | field), endswith - ; (symbol and ';')
             subroutineDec: startswith - keyword, ends when the first '{' ends with the respective '}'
@@ -33,9 +38,8 @@ Program Structure:
                                     term:
                         returnStatement - return ;
 '''
-import sys, os
-import re
-import definitions
+
+DEBUG_MODE = True
 
 class CompilerEngine:
     
@@ -43,6 +47,7 @@ class CompilerEngine:
         self.tokenFile = open(tokenFile, "r")
         self.outputFile = self.getOutputFile(tokenFile)
         self.line = self.tokenFile.readline()
+        self.triple = [] # represents [opening tag, token, closing tag]
         self.tabs = 0
 
     def getOutputFile(self, tokenFile):
@@ -51,20 +56,57 @@ class CompilerEngine:
 
     def writeClass(self):
         self.writeCurrentTag("class", True) # write opening tag
+
+        # write tokens before the classVarDec starts
+        self.tabs += 1
+        self.writeUntilFound(["static", "field"], False) # TODO: check assumption that there will always be static/field
+        self.tabs -= 1
+
+        # write classVarDec and subroutineDec
         self.writeClassVarDec() 
-        self.writeSubRoutineDec() 
+        self.writeSubRoutineDec()
+
+        # write closing tag
         self.writeCurrentTag("class", False) # write closing tag
 
     def writeClassVarDec(self):
-        self.tabs += 1
-        self.writeCurrentTag("classVarDec", True) # write opening tag
-        self.tabs += 1
+        while self.triple[1] in ["static", "field"]:
+            self.tabs += 1
+            self.writeCurrentTag("classVarDec", True) # write opening tag
+            self.tabs += 1
         
-        # include all the tokens before the first ";"
+            # include all the tokens before the first ";"
+            self.writeUntilFound(";", True)
 
-        self.tabs -= 1
-        self.writeCurrentTag("classVarDec", False) # write closing tag
-        self.tabs -= 1
+            self.tabs -= 1
+            self.writeCurrentTag("classVarDec", False) # write closing tag
+            self.tabs -= 1
+
+    def writeUntilFound(self, tokens, end):
+        '''
+        Write the triple of the [opening tag, token, closing tag] in a line
+        until the token is found.
+            i.e writeClassVarDec will be written until 'j' is found 
+        If it is the end of the current block, write the last triple in with the tab
+        and update the triple.
+        '''
+        while self.triple[1] not in tokens or not self.triple:
+            self.writeWithTab()
+            self.advance()
+        
+        if end:
+            self.writeWithTab()
+            self.advance()
+
+    def writeWithTab(self):
+        '''
+        Write to the output file the text with \t by self.tabs times prefixed.
+        '''
+        print(self.triple)
+        text = ("  " * self.tabs) + (" ".join(self.triple)) + '\n'
+        if DEBUG_MODE:
+            print(f"Wrote the text {text}")
+        self.outputFile.write(text)
 
     def writeSubRoutineDec(self):
         self.tabs += 1
@@ -72,10 +114,14 @@ class CompilerEngine:
         self.tabs += 1
 
         # include all the tokens before paramList
+        self.writeUntilFound("(", True) # current block ends with "("
 
         # write paramList
         self.writeParamList()
 
+        # write a single symbol
+        self.writeUntilFound(")", True)
+    
         # write subroutineBody
         self.writeSubRoutineBody()
 
@@ -88,6 +134,7 @@ class CompilerEngine:
         self.tabs += 1
 
         # include all the list of tokens between paramList
+        self.writeUntilFound(')', False) # ")" current block ends before ")" -- do not include in the current
 
         self.tabs -= 1
         self.writeCurrentTag("parameterList", False) # write closing tag
@@ -96,8 +143,11 @@ class CompilerEngine:
         self.writeCurrentTag("subroutineBody", True) # write opening tag
         self.tabs += 1
 
+        # include the opening tag before writing statements
+        self.writeUntilFound("{", True)
+
         # write statements
-        self.writeStatements()
+        # self.writeStatements()
 
         self.tabs -= 1
         self.writeCurrentTag("subroutineBody", False) # write closing tag
@@ -228,14 +278,17 @@ class CompilerEngine:
         '''
         Write the tagName to the output
         '''
-        tag = self.getTag(tagName, open, num)
+        tag = self.getTag(tagName, open)
+        if DEBUG_MODE:
+            print(f"Wrote the tag {tagName}")
         self.outputFile.write(tag)
 
     def getTag(self, tagName, open):
         '''
         Get the opened or closing tag.
         '''
-        return f"<{tagName}>" if open else f"</{tagName}>"
+        space = "  " * self.tabs
+        return f"{space}<{tagName}>\n" if open else f"{space}</{tagName}>\n"
 
     def close(self):
         '''
@@ -244,26 +297,29 @@ class CompilerEngine:
         self.tokenFile.close()
         self.outputFile.close()
 
+    def advance(self):
+
+        self.triple = self.tokenFile.readline().strip('\n').split()
+        return self.triple
+    
+    def isEnd(self):
+        '''
+        If the self.triple has only one element after advancing, it is the end
+        '''
+        return len(self.triple) == 1
+
     def run(self):
         '''
         Run the wrapping function for each stage.
         '''
         
-        # skip the line containing token tag
-        while re.match(r"<\/?token>", self.line): 
-            self.line = self.tokenFile.readline()
+        # skip the line containing token tag, and load with the next token
+        self.advance()
+
         
         # recursively call wrapping functions, starting from writeClass
         self.writeClass()
 
-            
-
 if __name__ == "__main__":
-    text = "<token>"
-
-    # Find <token> and </token> using regex
-    pattern = r"<\/?token>"
-    matches = re.match(pattern, text)
-
-    # Print the matches
-    print(matches)
+    engine = CompilerEngine(sys.argv[1])
+    engine.run()
