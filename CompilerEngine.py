@@ -57,6 +57,13 @@ class CompilerEngine:
     def getOutputFile(self, tokenFile):
         outputFile = os.path.basename(tokenFile)[:-len("T.xml")] + ".xml"
         return open(outputFile, "w")
+    
+    def run(self):        
+        # skip the line containing token tag, and load with the next token
+        self.advance()
+        
+        # recursively call wrapping functions, starting from writeClass
+        self.writeClass()
 
     def writeClass(self):
         self.writeCurrentTag("class", True) # write opening tag
@@ -72,6 +79,9 @@ class CompilerEngine:
 
         # write closing tag
         self.writeCurrentTag("class", False) # write closing tag
+
+        # close the file
+        self.close()
 
     def writeClassVarDec(self):
         while not self.isEnd() and self.triple[1] in ["static", "field"]:
@@ -105,6 +115,10 @@ class CompilerEngine:
 
         self.tabs -= 1
         self.writeCurrentTag("subroutineDec", False) # write closing tag
+
+        # write "}"
+        self.writeSingle()
+
         self.tabs -= 1
 
     def writeParamList(self):
@@ -223,7 +237,6 @@ class CompilerEngine:
         self.tabs -= 1
         self.writeCurrentTag("ifStatement", False) # write opening tag
 
-
     def writeWhileStatement(self):
         self.writeCurrentTag("whileStatement", True) # write opening tag
         self.tabs += 1
@@ -248,19 +261,25 @@ class CompilerEngine:
         self.tabs += 1
 
         # pre expression
-        self.writeExpression()
+        self.writeUntilFound("(", False)
 
-        # expression
+        # write expressionList
+        self.writeExpressionList()
+
+        # write ;
+        self.writeSingle()
 
         self.tabs -= 1
         self.writeCurrentTag("doStatement", True) # write opening tag
 
     def writeReturnStatement(self):
         self.writeCurrentTag("returnStatement", True) # write opening tag
+        self.tabs += 1
 
         # write until ; is found, inclusive
         self.writeUntilFound(";", True)
 
+        self.tabs -= 1
         self.writeCurrentTag("returnStatement", False) # write opening tag
 
     def writeExpression(self):
@@ -281,10 +300,6 @@ class CompilerEngine:
             if self.triple[1] in definitions.OPERATIONS:
                 self.writeSingle()
 
-            # if expressionList is nested in the current expression
-            if self.triple[1] == "(":
-                self.writeExpressionList()
-
         self.tabs -= 1
         self.writeCurrentTag("expression", False) # write closing tag
 
@@ -292,22 +307,41 @@ class CompilerEngine:
         self.writeCurrentTag("term", True) # write opening tag
         self.tabs += 1
 
-        self.writeSingle()
+        # a[i], a + b, keyboard.space(abe);
+        # write until [symbols, "(", "]", ";", ")"]
+
+        while self.triple[1] not in definitions.OPERATIONS and self.triple[1] not in ["(", "[", "]", ";", ")"]:
+            self.writeSingle()
+
+        # if expressionList starts
+        if self.triple[1] == "(":
+            self.writeExpressionList()
+
+        # if expression starts
+        if self.triple[1] == '[':
+            self.writeSingle()
+            self.writeExpression()
+            self.writeSingle()
 
         self.tabs -= 1
         self.writeCurrentTag("term", False) # write closing tag
 
     def writeExpressionList(self):
+        '''
+        This is called when Keyboard.screen(a, b).., when triple[1] == a
+            writeExpression should be called until the first ")"
+        '''
+        self.writeSingle() # write "("
         self.writeCurrentTag("expressionList", True) # write opening tag
         self.tabs += 1
 
-        while True:
-            # write expression and symbols...
-            break
-
+        # write expression
+        while self.triple[1] != ")":
+            self.writeExpression()
 
         self.tabs -= 1
         self.writeCurrentTag("expressionList", False) # write closing tag
+        self.writeSingle() # write ")"
 
     def writeCurrentTag(self, tagName, open):
         '''
@@ -376,18 +410,6 @@ class CompilerEngine:
         If the self.triple has only one element after advancing, it is the end
         '''
         return len(self.triple) == 1
-
-    def run(self):
-        '''
-        Run the wrapping function for each stage.
-        '''
-        
-        # skip the line containing token tag, and load with the next token
-        self.advance()
-
-        
-        # recursively call wrapping functions, starting from writeClass
-        self.writeClass()
 
 if __name__ == "__main__":
     engine = CompilerEngine(sys.argv[1])
